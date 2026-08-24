@@ -13,7 +13,7 @@ on:
 
 jobs:
   # Runs CSharpier formatting check and dotnet build as separate parallel jobs.
-  # Parallel jobs give faster feedback â€” a formatting miss comes back in seconds
+  # Parallel jobs give faster feedback -- a formatting miss comes back in seconds
   # without waiting for the full build to finish first.
 
   format-check:
@@ -40,7 +40,7 @@ jobs:
 
       - name: Run CSharpier check
         run: dotnet csharpier check .
-        # Check-only mode â€” does not modify files, just exits non-zero if
+        # Check-only mode -- does not modify files, just exits non-zero if
         # any file is not formatted correctly. A non-zero exit fails the job
         # and blocks the PR from merging (if branch protection requires this check).
 
@@ -68,7 +68,7 @@ jobs:
         env:
           NUGET_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         # GITHUB_TOKEN is automatically injected by GitHub into every workflow run
-        # for free â€” no secrets setup needed. The nuget.config reads it via the
+        # for free -- no secrets setup needed. The nuget.config reads it via the
         # %NUGET_AUTH_TOKEN% placeholder to authenticate against GitHub Packages.
 
       - name: Build
