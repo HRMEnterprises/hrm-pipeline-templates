@@ -1,0 +1,29 @@
+name: PR Checks
+
+# This file lives in each individual repo at .github/workflows/pr-checks.yml
+# It contains NO logic of its own â€” it only decides WHEN to fire, then
+# delegates everything to the shared workflow in hrm-pipeline-templates.
+#
+# To update PR check behavior for all repos, edit the shared workflow:
+# https://github.com/HRMEnterprises/hrm-pipeline-templates/blob/main/.github/workflows/dotnet-pr-checks.yml
+#
+# Do NOT copy the shared workflow logic into this file.
+
+on:
+  pull_request:
+    # opened:      fires when a PR is first created
+    # synchronize: fires on every subsequent push to the PR branch
+    #              (e.g. someone fixes a failed check and pushes again)
+    types: [opened, synchronize]
+
+jobs:
+  pr-checks:
+    uses: HRMEnterprises/hrm-pipeline-templates/.github/workflows/dotnet-pr-checks.yml@main
+    secrets: inherit
+    # secrets: inherit passes GITHUB_TOKEN down into the shared workflow
+    # so it can authenticate against GitHub Packages for NuGet restore.
+    #
+    # Optional: override the default .NET version if this repo targets something
+    # other than 8.0.x:
+    # with:
+    #   dotnet-version: "9.0.x"
