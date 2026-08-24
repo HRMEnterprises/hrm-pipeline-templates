@@ -1,0 +1,78 @@
+name: .NET PR Checks (Reusable)
+
+# workflow_call means this file is NOT triggered by GitHub events directly.
+# It only runs when another repo's wrapper file explicitly calls it via `uses:`.
+on:
+  workflow_call:
+    inputs:
+      dotnet-version:
+        description: .NET SDK version to use
+        type: string
+        required: false
+        default: "8.0.x"
+
+jobs:
+  # Runs CSharpier formatting check and dotnet build as separate parallel jobs.
+  # Parallel jobs give faster feedback â€” a formatting miss comes back in seconds
+  # without waiting for the full build to finish first.
+
+  format-check:
+    name: CSharpier Format Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        # Checks out the PR branch so we're validating the actual incoming code,
+        # not whatever is already on main.
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ inputs.dotnet-version }}
+        # Installs the .NET SDK on the runner. We expose this as an input so
+        # repos targeting a different SDK version can override it without
+        # forking the shared workflow.
+
+      - name: Install CSharpier
+        run: dotnet tool install -g csharpier
+        # Installs CSharpier globally on the runner for this job.
+        # Global install means we can call `dotnet csharpier` as a plain command.
+
+      - name: Run CSharpier check
+        run: dotnet csharpier check .
+        # Check-only mode â€” does not modify files, just exits non-zero if
+        # any file is not formatted correctly. A non-zero exit fails the job
+        # and blocks the PR from merging (if branch protection requires this check).
+
+  build:
+    name: dotnet build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ inputs.dotnet-version }}
+
+      - name: Copy nuget.config
+        run: |
+          curl -o nuget.config https://raw.githubusercontent.com/HRMEnterprises/hrm-pipeline-templates/main/config/nuget.config
+        # Pulls the shared nuget.config from this repo into the calling repo's
+        # working directory so dotnet restore knows where to find GitHub Packages.
+        # This avoids every repo needing its own copy of the config file.
+
+      - name: Restore dependencies
+        run: dotnet restore
+        env:
+          NUGET_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # GITHUB_TOKEN is automatically injected by GitHub into every workflow run
+        # for free â€” no secrets setup needed. The nuget.config reads it via the
+        # %NUGET_AUTH_TOKEN% placeholder to authenticate against GitHub Packages.
+
+      - name: Build
+        run: dotnet build --configuration Release --no-restore
+        # --no-restore skips a redundant second restore since we just did it above.
+        # Release config catches any configuration-specific build issues that
+        # Debug mode might silently ignore.
