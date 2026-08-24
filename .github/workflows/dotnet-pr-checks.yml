@@ -19,6 +19,8 @@ jobs:
   format-check:
     name: CSharpier Format Check
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -47,6 +49,13 @@ jobs:
   build:
     name: dotnet build
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+      # packages: read is required for GITHUB_TOKEN to authenticate against
+      # GitHub Packages when resolving internal NuGet dependencies (e.g. AppCommonCore).
+      # Without this explicit declaration, orgs with restrictive default token
+      # permissions will produce a 403 on dotnet restore.
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -56,20 +65,38 @@ jobs:
         with:
           dotnet-version: ${{ inputs.dotnet-version }}
 
-      - name: Copy nuget.config
+      - name: Write nuget.config
         run: |
-          curl -o nuget.config https://raw.githubusercontent.com/HRMEnterprises/hrm-pipeline-templates/main/config/nuget.config
-        # Pulls the shared nuget.config from this repo into the calling repo's
-        # working directory so dotnet restore knows where to find GitHub Packages.
-        # This avoids every repo needing its own copy of the config file.
+          cat > nuget.config << 'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <configuration>
+            <packageSources>
+              <add key="github" value="https://nuget.pkg.github.com/HRMEnterprises/index.json" />
+            </packageSources>
+            <packageSourceCredentials>
+              <github>
+                <add key="Username" value="x-access-token" />
+                <add key="ClearTextPassword" value="%NUGET_AUTH_TOKEN%" />
+              </github>
+            </packageSourceCredentials>
+          </configuration>
+          EOF
+        # Writes the nuget.config inline rather than fetching it from the
+        # hrm-pipeline-templates repo. An authenticated curl against an internal
+        # repo adds complexity; writing inline keeps the build job self-contained
+        # with no external dependencies.
 
       - name: Restore dependencies
         run: dotnet restore
         env:
-          NUGET_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        # GITHUB_TOKEN is automatically injected by GitHub into every workflow run
-        # for free -- no secrets setup needed. The nuget.config reads it via the
-        # %NUGET_AUTH_TOKEN% placeholder to authenticate against GitHub Packages.
+          NUGET_AUTH_TOKEN: ${{ github.token }}
+        # github.token (equivalent to secrets.GITHUB_TOKEN) is automatically
+        # injected by GitHub into every workflow run for free -- no secrets
+        # setup needed. The nuget.config reads it via the %NUGET_AUTH_TOKEN%
+        # placeholder to authenticate against GitHub Packages.
+        # We use github.token rather than secrets.GITHUB_TOKEN here because
+        # github.token is always the calling repo's token regardless of how
+        # the workflow was invoked, which is what NuGet needs.
 
       - name: Build
         run: dotnet build --configuration Release --no-restore
