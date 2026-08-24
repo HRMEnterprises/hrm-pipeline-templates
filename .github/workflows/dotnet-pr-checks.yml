@@ -10,6 +10,15 @@ on:
         type: string
         required: false
         default: "8.0.x"
+    secrets:
+      NUGET_AUTH_TOKEN:
+        description: >
+          PAT with read:packages scope for resolving internal GitHub Packages
+          dependencies (e.g. AppCommonCore). Must be passed explicitly or via
+          secrets: inherit from the calling workflow.
+          GITHUB_TOKEN cannot be used here -- it is scoped to the calling repo
+          and cannot read packages published by other repos in the org.
+        required: true
 
 jobs:
   # Runs CSharpier formatting check and dotnet build as separate parallel jobs.
@@ -52,10 +61,6 @@ jobs:
     permissions:
       contents: read
       packages: read
-      # packages: read is required for GITHUB_TOKEN to authenticate against
-      # GitHub Packages when resolving internal NuGet dependencies (e.g. AppCommonCore).
-      # Without this explicit declaration, orgs with restrictive default token
-      # permissions will produce a 403 on dotnet restore.
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -71,6 +76,7 @@ jobs:
           <?xml version="1.0" encoding="utf-8"?>
           <configuration>
             <packageSources>
+              <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
               <add key="github" value="https://nuget.pkg.github.com/HRMEnterprises/index.json" />
             </packageSources>
             <packageSourceCredentials>
@@ -81,22 +87,19 @@ jobs:
             </packageSourceCredentials>
           </configuration>
           EOF
-        # Writes the nuget.config inline rather than fetching it from the
-        # hrm-pipeline-templates repo. An authenticated curl against an internal
-        # repo adds complexity; writing inline keeps the build job self-contained
-        # with no external dependencies.
+        # Writes nuget.config inline so the build job is fully self-contained.
+        # We use x-access-token as the username -- GitHub Packages ignores the
+        # username when token auth is used, but x-access-token is the convention.
 
       - name: Restore dependencies
         run: dotnet restore
         env:
-          NUGET_AUTH_TOKEN: ${{ github.token }}
-        # github.token (equivalent to secrets.GITHUB_TOKEN) is automatically
-        # injected by GitHub into every workflow run for free -- no secrets
-        # setup needed. The nuget.config reads it via the %NUGET_AUTH_TOKEN%
-        # placeholder to authenticate against GitHub Packages.
-        # We use github.token rather than secrets.GITHUB_TOKEN here because
-        # github.token is always the calling repo's token regardless of how
-        # the workflow was invoked, which is what NuGet needs.
+          NUGET_AUTH_TOKEN: ${{ secrets.NUGET_AUTH_TOKEN }}
+        # Uses the org-level PAT secret rather than GITHUB_TOKEN.
+        # GITHUB_TOKEN is scoped to the calling repo and cannot read packages
+        # published by other repos (e.g. AppCommonCore) -- this is a GitHub
+        # hard limitation regardless of permissions declarations.
+        # The PAT needs read:packages scope and is stored as an org Actions secret.
 
       - name: Build
         run: dotnet build --configuration Release --no-restore
